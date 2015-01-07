@@ -23,7 +23,7 @@ var MultiBox = new Class({
 			//showThumbnails: false,
 			//autoPlay: false,
 			//waitDuration: 2000,
-			descClassName: false,
+			descClassName: 'mbDesc',
 			descMinWidth: 400,
 			descMaxWidth: 600,
 			movieWidth: 400,
@@ -33,14 +33,15 @@ var MultiBox = new Class({
 			path: 'files/',
 			_onOpen: $empty,
 			_onClose: $empty,
-			openFromLink: true
+			openFromLink: true,
+			useKeyboard: true
 			//relativeToWindow: true
 		};
 	},
 
 	initialize: function(className, options){
 		this.setOptions(this.getOptions(), options);
-		
+
 		this.openClosePos = {};
 		this.timer = 0;
 		this.contentToLoad = {};
@@ -49,6 +50,7 @@ var MultiBox = new Class({
 		this.contentObj = {};
 		this.containerDefaults = {};
 		this.createArray = [];
+		this.tryNext = this.tryNext.bind(this);
 		
 		if(this.options.useOverlay){
 			this.overlay = new Overlay({container: this.options.container, onClick:this.close.bind(this)});
@@ -57,15 +59,7 @@ var MultiBox = new Class({
 		if(this.overlay){
 			this.overlay.setOnClick(this.close.bind(this));
 		}
-		
-		this.content = $$('.'+className);
-		if(this.options.descClassName){
-			this.descriptions = $$('.'+this.options.descClassName);
-			this.descriptions.each(function(el){
-				el.setStyle('display', 'none');
-			});
-		}
-		
+
 		this.container = new Element('div').addClass('MultiBoxContainer').injectInside(this.options.container);
 		this.iframe = new Element('iframe').setProperties({
 			'id': 'multiBoxIframe',
@@ -81,40 +75,96 @@ var MultiBox = new Class({
 			'opacity': 0
 		}).inject(this.container);
 		this.box = new Element('div').addClass('MultiBoxContent').inject(this.container);
-		
+
 		this.closeButton = new Element('div').addClass('MultiBoxClose').inject(this.container).addEvent('click', this.close.bind(this));
-		
+
 		this.controlsContainer = new Element('div').addClass('MultiBoxControlsContainer').inject(this.container);
 		this.controls = new Element('div').addClass('MultiBoxControls').inject(this.controlsContainer);
-		
+
 		this.previousButton = new Element('div').addClass('MultiBoxPrevious').inject(this.controls).addEvent('click', this.previous.bind(this));
 		this.nextButton = new Element('div').addClass('MultiBoxNext').inject(this.controls).addEvent('click', this.next.bind(this));
-		
+
 		this.title = new Element('div').addClass('MultiBoxTitle').inject(this.controls);
 		this.titleMargin = this.title.getStyle('margin-left');
 		this.number = new Element('div').addClass('MultiBoxNumber').inject(this.controls);
 		this.description = new Element('div').addClass('MultiBoxDescription').inject(this.controls);
-		
-		
-		
-		if(this.content.length == 1){
-			this.title.setStyles({
-				'margin-left': 0
-			});
-			this.description.setStyles({
-				'margin-left': 0
-			});
-			this.previousButton.setStyle('display', 'none');
-			this.nextButton.setStyle('display', 'none');
-			this.number.setStyle('display', 'none');
-		}
-		
+
+
 		new Element('div').setStyle('clear', 'both').inject(this.controls);
+
+		// assign content to mutlibox
+		this.assignContent(className);
+
+		this.containerEffects = new Fx.Morph(this.container, {duration: 400, transition: Fx.Transitions.Sine.easeInOut});
+		this.iframeEffects = new Fx.Morph(this.iframe, {duration: 400, transition: Fx.Transitions.Sine.easeInOut});
+		this.controlEffects = new Fx.Morph(this.controlsContainer, {duration: 300, transition: Fx.Transitions.Sine.easeInOut});
+
+		this.reset();
+
+		//check user options and call functions accordingly
+		if(this.options.useKeyboard){
+			$(window.document).addEvent('keydown',function(e){
+				if(e.key == 'right' || e.key == 'space'){
+					this.next();
+				}else if(e.key == 'left'){
+					this.previous();
+				}else if(e.key == 'esc'){
+					this.close();
+				};
+			}.bind(this));
+		};
 		
+		return this;
+	},
+
+	assignContent: function(className){
+		if(this.options.descClassName){
+			this.descriptions = $$('.'+this.options.descClassName);
+			this.descriptions.each(function(el){
+				el.setStyle('display', 'none');
+			});
+		}
+
+		this.content = $$('.'+className);
+		this.contentAll = this.content;
 		this.content.each(function(el,i){
 			el.index = i;
 			el.addEvent('click', function(e){
-				new Event(e).stop();
+				e.stop();
+
+				this.content = this.contentAll;
+
+				var match = el.rel.match( /\[[^<]+\]/ );
+				if($chk(match) && $chk(match[0])) {
+					var group = match[0].replace("[","").replace("]","");
+					var family = el.getParent().getParent().getElements('.'+group);
+					if($A(family).length>0 ) {
+						this.content = family;
+					}
+				}
+
+				if(this.content.length == 1){
+					this.title.setStyles({
+						'margin-left': 0
+					});
+					this.description.setStyles({
+						'margin-left': 0
+					});
+					this.previousButton.setStyle('display', 'none');
+					this.nextButton.setStyle('display', 'none');
+					this.number.setStyle('display', 'none');
+				} else {
+					this.title.setStyles({
+						'margin-left': 0
+					});
+					this.description.setStyles({
+						'margin-left': 0
+					});
+					this.previousButton.setStyle('display', 'block');
+					this.nextButton.setStyle('display', 'block');
+					this.number.setStyle('display', 'block');
+				}
+
 				this.open(el);
 			}.bind(this));
 			if(el.href.indexOf('#') > -1){
@@ -122,14 +172,8 @@ var MultiBox = new Class({
 				if(el.content){el.content.setStyle('display','none');}
 			}
 		}, this);
-		
-		this.containerEffects = new Fx.Morph(this.container, {duration: 400, transition: Fx.Transitions.Sine.easeInOut});
-		this.iframeEffects = new Fx.Morph(this.iframe, {duration: 400, transition: Fx.Transitions.Sine.easeInOut});
-		this.controlEffects = new Fx.Morph(this.controlsContainer, {duration: 300, transition: Fx.Transitions.Sine.easeInOut});
-		
-		this.reset();
 	},
-	
+
 	setContentType: function(link){
 		var str = link.href.substr(link.href.lastIndexOf('.')+1).toLowerCase();
 		var contentOptions = {};
@@ -305,9 +349,9 @@ var MultiBox = new Class({
 		this.options._onOpen();
 	
 		this.index = this.content.indexOf(el);
-		
-		this.openId = el.getProperty('id');
-		
+
+		this.openId = el.get('openid');
+
 		var border = this.container.getStyle('border').toInt();
 		
 		if(!this.opened){
@@ -383,8 +427,8 @@ var MultiBox = new Class({
 			var desc = new Element('div', {
 				'class': id,
 				'html': obj.description || ''
-			})
-		
+			});
+
 			this.createArray.push(obj.url);
 			this.content.push(a);
 			var index = this.content.length-1;
@@ -401,7 +445,7 @@ var MultiBox = new Class({
 		var desc = false;
 		if(this.options.descClassName){
 		this.descriptions.each(function(el,i){
-			if(el.hasClass(this.openId)){
+			if(el.get("rel") == this.openId){
 				desc = el.clone();
 			}
 		},this);
@@ -421,7 +465,7 @@ var MultiBox = new Class({
 			this.hideControls();
 		}
 		this.hideContent();
-		this.containerEffects.cancel();
+		this.containerEffects && this.containerEffects.cancel();
 		this.zoomOut.bind(this).delay(500);
 		this.options._onClose();
 	},
@@ -431,14 +475,14 @@ var MultiBox = new Class({
 			width: this.openClosePos.width,
 			height: this.openClosePos.height
 		});
-		this.containerEffects.start({
+		this.containerEffects && this.containerEffects.start({
 			width: this.openClosePos.width,
 			height: this.openClosePos.height,
 			top: this.openClosePos.top,
 			left: this.openClosePos.left,
 			opacity: 0
 		});
-		this.reset.bind(this).delay(500);
+		this.reset.delay(500, this);
 	},
 	
 	load: function(index){
@@ -446,7 +490,11 @@ var MultiBox = new Class({
 		this.getContent(index);
 		if(this.type == 'image'){
 			var xH = this.contentObj.xH;
-			this.contentObj = new Asset.image(this.content[index].href, {onload: this.resize.bind(this)});
+			this.contentObj = new Asset.image(this.content[index].href, {
+				onload: this.resize.bind(this),
+				onerror: this.tryNext,
+				onabort: this.tryNext
+			});
 			this.contentObj.xH = xH;
 		}else{
 			this.resize();
@@ -455,9 +503,16 @@ var MultiBox = new Class({
 	
 	resize: function(){
 		if(this.tempSRC != this.contentObj.src){
+			var border = this.container.getStyle('border').toInt(),
+				size = window.getSize(),
+				h = size.y-120;
 			
-			var border = this.container.getStyle('border').toInt();
-			
+			if(this.contentObj.height > h){
+				var k = h /Number(this.contentObj.height);
+				this.contentObj.height = h;
+				this.contentObj.width = Number(this.contentObj.width)*k;
+			}
+
 			if (this.options.fixedTop) {
 				var top = this.options.fixedTop;
 			}
@@ -469,17 +524,19 @@ var MultiBox = new Class({
 				top = 0
 			}
 			if (left < 0) {
-				left = 0
+				left = 0;
 			}
-			
-			this.containerEffects.cancel();
-			this.containerEffects.start({
-				width: this.contentObj.width,
-				height: Number(this.contentObj.height) + this.contentObj.xH,
-				top: top,
-				left: left,
-				opacity: 1
-			});
+			if(this.containerEffects){
+				this.containerEffects.cancel();
+				this.containerEffects.start({
+					width: this.contentObj.width,
+					height: Number(this.contentObj.height) + this.contentObj.xH,
+					top: top,
+					left: left,
+					opacity: 1
+				});
+			}
+	
 			this.iframeEffects.start({
 				width: Number(this.contentObj.width) + (border*2),
 				height: Number(this.contentObj.height) + this.contentObj.xH + (border*2)
@@ -527,14 +584,13 @@ var MultiBox = new Class({
 			}
 		}
 		
-		this.contentEffects = new Fx.Morph(this.contentContainer, {duration: 500, transition: Fx.Transitions.linear});
-		this.contentEffects.start({
+		this.contentEffects = new Fx.Morph(this.contentContainer, {duration: 500, transition: Fx.Transitions.linear}).start({
 			opacity: 1
 		});
 		
 		this.title.set('html', this.contentToLoad.title);
 		if(this.content.length > 1){
-			this.number.set('html', this.contentToLoad.number+' of '+this.content.length);
+			this.number.set('html', this.contentToLoad.number+' / '+this.content.length);
 		}else{
 			this.number.set('html','');
 		}
@@ -558,7 +614,7 @@ var MultiBox = new Class({
 	
 	hideContent: function(){
 		this.box.addClass('MultiBoxLoading');
-		this.contentEffects.start({
+		this.contentEffects && this.contentEffects.start({
 			opacity: 0
 		});
 		this.removeContent.bind(this).delay(500);
@@ -634,28 +690,46 @@ var MultiBox = new Class({
 	next: function(){
 		if(this.index < this.content.length-1){
 			this.index++;
-			this.openId = this.content[this.index].getProperty('id');
-			if (this.options.showControls) {
-				this.hideControls();
-			}
-			this.getOpenClosePos(this.content[this.index]);
-			//this.getContent(this.index);
-			this.timer = this.hideContent.bind(this).delay(500);
-			this.timer = this.load.pass(this.index, this).delay(1100);
+		} else {
+			this.index = 0;
 		}
+		var current = this.content[this.index];
+		if(!current) return;
+		
+		this.openId = current.get('openid');
+		if (this.options.showControls) {
+			this.hideControls();
+		}
+		this.getOpenClosePos(current);
+		//this.getContent(this.index);
+		this.timer = this.hideContent.delay(500, this);
+		this.timer = this.load.delay(1100, this, [this.index]);
 	},
 	
+	tryNext: function(){
+		if(this.index < this.content.length-1){
+			this.next();
+		} else {
+			this.index = 0;
+			this.close();
+		}		
+	},
+
 	previous: function(){
 		if(this.index > 0){
 			this.index--;
-			this.openId = this.content[this.index].getProperty('id');
+			var current = this.content[this.index];
+			if(!current) return;
+
+			this.openId = current.get('openid');
+			
 			if (this.options.showControls) {
 				this.hideControls();
 			}
-			this.getOpenClosePos(this.content[this.index]);
+			this.getOpenClosePos(current);
 			//this.getContent(this.index);
-			this.timer = this.hideContent.bind(this).delay(500);
-			this.timer = this.load.pass(this.index, this).delay(1000);
+			this.timer = this.hideContent.delay(500, this);
+			this.timer = this.load.delay(1000, this, [this.index]);
 		}
 	},
 	
